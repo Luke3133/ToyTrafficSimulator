@@ -20,14 +20,6 @@ class RecommenderController:
         self.htmlcontroller = website_url
         eel.init(self.htmlcontroller)
 
-
-
-
-
-
-
-
-
         if self.problemfiles == "TrafficProblem":
             self.TrafficManager = TrafficProblemManager(debug_mode)
             self.states.append("./Networks/Original/")
