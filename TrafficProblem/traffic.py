@@ -25,6 +25,9 @@ class TrafficProblemManager:
     debug_mode = False
     network_lanes = []
     current_emissions = {}
+    traffic_flows = []
+    current_vehicles = []
+    lane_information = {}
 
     def __init__(self,debug):
         self.temp.append(['.Original/'])
@@ -36,13 +39,44 @@ class TrafficProblemManager:
             if ":" not in str(lane):
                 self.network_lanes.append(lane)
 
+    def getCurrentVehicles(self):
+        self.current_vehicles = []  # Reset vehicles array
+
+        vehicles = traci.vehicle.getIDList()  # Get the ID's of all vehicles in the network
+
+        # get vehicle locations
+        locations = []  # Temp vehicle locations array
+        for vehicle in vehicles:
+            locations.append(traci.vehicle.getLaneID(vehicle))
+
+        # get vehicle speeds
+        speeds = []
+        for vehicle in vehicles:
+            speeds.append(traci.vehicle.getSpeed(vehicle))
+
+        self.current_vehicles = [vehicles, locations, speeds]
+        return self.current_vehicles
+
+    def getLaneInformation(self):
+        lanes = traci.lane.getIDList()
+
+        # Get the speed limits of each lane
+        speedlimits = []
+        for lane in lanes:
+            speedlimits.append(traci.lane.getMaxSpeed(lane))
+
+        self.lane_information = dict(zip(lanes, speedlimits))
+        return self.lane_information
+
+
     def runState(self, state, runparameter):
 
         print("Running State : " + state + "osm.sumocfg")
-        sumoCmd = [sumoBinary, "-c",  dir_path + state + "osm.sumocfg", "--start"]
+        sumoCmd = [sumoBinary, "-c",  dir_path + state + "osm.sumocfg", "--start", "--quit-on-end"]
         if self.debug_mode: print("Starting SUMO")
         traci.start(sumoCmd)
-        traci.gui.setSchema("View #0", "emissions")
+        #traci.gui.setSchema("View #0", "emissions")
+        traci.gui.setSchema("View #0", "faster standard")
         if self.debug_mode: print("Sumo Started")
 
         # Run the network in SUMO
@@ -63,29 +97,55 @@ class TrafficProblemManager:
             traci.simulationStep()
 
             # Show the emissions on the map
+            #
+            # if self.current_emissions == {}:
+            #     for lane in self.network_lanes:
+            #         self.current_emissions[lane] = traci.lane.getCO2Emission(lane)
+            #         traci.lane.setParameter(lane, "Emis", self.current_emissions[lane])
+            # else:
+            #     for lane in self.network_lanes:
+            #         self.current_emissions[lane] += traci.lane.getCO2Emission(lane)
+            #         traci.lane.setParameter(lane, "Emis", self.current_emissions[lane]/j)
 
-            if self.current_emissions == {}:
-                for lane in self.network_lanes:
-                    self.current_emissions[lane] = traci.lane.getCO2Emission(lane)
-                    traci.lane.setParameter(lane, "Emis", self.current_emissions[lane])
-            else:
-                for lane in self.network_lanes:
-                    self.current_emissions[lane] += traci.lane.getCO2Emission(lane)
-                    traci.lane.setParameter(lane, "Emis", self.current_emissions[lane]/j)
+            self.get_traffic_flow()
 
             j += 1
         traci.close(wait=False)
 
+        return np.mean(self.traffic_flows)
 
 
+    def get_traffic_flow(self):
+
+        # Calculate the rate of traffic flow. We do this by looking at the list of all vehicles in the network, checking
+        # the roads speed limit, then comparing with the speed of the vehicle
+
+        self.getCurrentVehicles()
+        self.getLaneInformation()
+        speed_limit = []
+        for LaneID in self.current_vehicles[1]:
+            speed_limit.append(float(self.lane_information[str(LaneID)]))
+
+        flow_rates = []
+        for i in range(0, np.shape(self.current_vehicles)[1]):
+            # For each car, compare the speed with the road speed limit
+
+            car_speed = float(self.current_vehicles[2][i])
+            road_speed = float(speed_limit[i])
+            flow_rates.append(car_speed / road_speed)
+
+
+        #
+        #     speedLimit = [speedLimit for SpeedLimit in self.lane_information if str(LaneID) in self.lane_information[0]]
+        #     print(speedLimit)
+        self.traffic_flows.append(np.mean(flow_rates))
+        return np.mean(flow_rates)
 
 
     def runAction(self,action, state, new_state):
         action = str(action).split(" ")
         print("Running action " + action[0] + ", " + action[1] + " on state " + state)
 
-        print("TEMPORARY OVERRIDE TO BLOCK STREET 23353423#2")
-        action[1] = "23353423#2"
         # Check action type
         if action[0] == "remove":
             # We need to remove a road
@@ -172,13 +232,39 @@ class TrafficProblemManager:
 
             print("Successfully updated edg file")
 
-            # Copy the node, tll and typ files to the new directory
+            Newfile = []  # Temporarily store new file
+
+            # Read the edge file and store it into Newfile
+            with open(dir_path + state + "flatfiles/network.tll.xml", "r") as f:
+                Newfile = f.readlines()
+
+            # Check if the directory of the new file exists yet
+            if not os.path.isdir(dir_path + new_state + "flatfiles"):
+                os.makedirs(dir_path + new_state + "flatfiles")
+                print("Created new directory in " + new_state + "flatfiles")
+            else:
+                if self.debug_mode: print("Directory " + new_state + "flatfiles/ already exists")
+
+            # Now rewrite the file but remove the unwanted connections
+
+            with open(dir_path + new_state + "flatfiles/network.tll.xml", "w") as f:
+                print("Successfully opened output file : " + new_state + "flatfiles/network.con.xml")
+                Delete = False
+                for number, line in enumerate(Newfile):
+
+                    if str(action[1]) in line:
+                        print("Removing line : " + str(line))
+                    else:
+                        f.write(str(line) + "\n")
+
+            print("Successfully updated tll file")
+
+            # Copy the node and typ files to the new directory
             print("Copying remaining files")
 
             if self.debug_mode: print("Copying node file")
             shutil.copyfile(dir_path + state + "flatfiles/network.nod.xml", dir_path + new_state + "flatfiles/network.nod.xml")
-            if self.debug_mode: print("Copying traffic light file")
-            shutil.copyfile(dir_path + state + "flatfiles/network.tll.xml", dir_path + new_state + "flatfiles/network.tll.xml")
+
             if self.debug_mode: print("Copying node file")
             shutil.copyfile(dir_path + state + "flatfiles/network.typ.xml", dir_path + new_state + "flatfiles/network.typ.xml")
 
@@ -194,11 +280,12 @@ class TrafficProblemManager:
             # Create a trips file
 
             print("Creating trips file")
-            subprocess.call(["randomTrips.py", "--net-file=" + dir_path + new_state + "osm.net.xml", "-e 350", "--output-trip-file=" + dir_path + new_state + "osm.trips.xml", "--period=0.1", "--validate"], shell=True)
+            subprocess.call(["randomTrips.py", "--net-file=" + dir_path + new_state + "osm.net.xml", "-e 350", "--output-trip-file=" + dir_path + new_state + "osm.trips.xml", "--route-file=" + dir_path + new_state + "osm.rou.xml", "--period=0.1", "--validate"], shell=True)
             print("done")
-            print("Creating Routes file")
-            subprocess.call(["duarouter", "--net-file=" + dir_path + new_state + "osm.net.xml", "--route-files=" + dir_path + new_state + "osm.trips.xml", "--output-file=" + dir_path + new_state + "osm.rou.xml"], shell=True)
-            print("done")
+            # Commented out the duarouter file because I think randomtrips.py already produces a routes file.
+            # print("Creating Routes file")
+            # subprocess.call(["duarouter", "--net-file=" + dir_path + new_state + "osm.net.xml", "--route-files=" + dir_path + new_state + "osm.trips.xml", "--output-file=" + dir_path + new_state + "osm.rou.xml"], shell=True)
+            # print("done")
 
             # Create the config file
 

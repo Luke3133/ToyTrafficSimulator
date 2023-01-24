@@ -31,17 +31,11 @@ class RecommenderController:
         while not finished:
             # Await an action by the user
             next_action = input("Select next action")
-            # eel.start('index.html')
-            # @eel.expose
-            # def run(value):
-            #     print(value)
-            #     self.TrafficManager.runState(self.states[-1], int(value))
 
             if str(next_action) == "end":
                 finished = True
             elif str(next_action) == "history":
-                # self.print_history()
-                print("History")
+                self.print_history()
             elif "run" in str(next_action):
                 runparameter = str(next_action).replace("run","")  # runparameter can be blank depending on scenario!
                 print(runparameter)
@@ -49,7 +43,9 @@ class RecommenderController:
                     runparameter = int(runparameter)
                 else:
                     runparameter = -1
-                self.TrafficManager.runState(self.states[-1], runparameter)
+                self.rewards.append(self.TrafficManager.runState(self.states[-1], runparameter))
+
+
             elif "action" in str(next_action):
                 # Run an action / update the state (action type value)
                 self.actions.append(str(next_action).replace("action ",""))
@@ -65,6 +61,11 @@ class RecommenderController:
 
                 # self.new_turn(int(next_action), self.state[-1])
         return(10)
+
+    def print_history(self):
+        print("The states history is : " + str(self.states))
+        print("The action history is : " + str(self.actions))
+        print("The reward history is : " + str(self.rewards))
 
 
 Traffic = RecommenderController("TrafficProblem", "./TrafficProblem/Networks/", True, "./Website/")
