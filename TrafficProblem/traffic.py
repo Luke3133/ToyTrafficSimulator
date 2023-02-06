@@ -14,7 +14,7 @@ else:
 import traci
 import traci.constants
 
-sumoBinary = "C:\Program Files (x86)\Eclipse" + os.sep + "Sumo" + os.sep + "bin" + os.sep + "sumo-gui.exe"
+sumoBinary = "D:\Program Files (x86)\Eclipse" + os.sep + "Sumo" + os.sep + "bin" + os.sep + "sumo.exe"
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -72,11 +72,12 @@ class TrafficProblemManager:
     def runState(self, state, runparameter):
 
         print("Running State : " + state + "osm.sumocfg")
+        print(dir_path + state)
         sumoCmd = [sumoBinary, "-c",  dir_path + state + "osm.sumocfg", "--start", "--quit-on-end"]
         if self.debug_mode: print("Starting SUMO")
         traci.start(sumoCmd)
         #traci.gui.setSchema("View #0", "emissions")
-        traci.gui.setSchema("View #0", "faster standard")
+        #traci.gui.setSchema("View #0", "faster standard")
         if self.debug_mode: print("Sumo Started")
 
         # Run the network in SUMO
@@ -92,8 +93,6 @@ class TrafficProblemManager:
         self.current_emissions = {}
         while (j < last_j):
             # for each time step
-
-            time.sleep(0.1)
             traci.simulationStep()
 
             # Show the emissions on the map
@@ -160,15 +159,15 @@ class TrafficProblemManager:
                 print("Created new directory in " + state + "flatfiles")
 
             # Use subprocess to run netconvert to flatten the files to plain xml
-            subprocess.call(["netconvert", "--sumo-net-file=" + dir_path + network_file, "--plain-output-prefix="  + dir_path+ state + "flatfiles/network"], shell=True)
-            print("Outputted to " + state + "flatfiles/")
+            subprocess.call(["netconvert", "--sumo-net-file=" + dir_path + network_file, "--plain-output-prefix="  + dir_path+ state + "flatfiles\\network"], shell=True)
+            print("Outputted to " + state + "flatfiles\\")
 
             # We need to remove edge from network.edg file
 
             Newfile = []  # Temporarily store new file
 
             # Read the edge file and store it into Newfile
-            with open(dir_path + state + "flatfiles/network.edg.xml", "r") as f:
+            with open(dir_path + state + "flatfiles\\network.edg.xml", "r") as f:
                 Newfile = f.readlines()
 
             # Check if the directory of the new file exists yet
@@ -280,7 +279,7 @@ class TrafficProblemManager:
             # Create a trips file
 
             print("Creating trips file")
-            subprocess.call(["randomTrips.py", "--net-file=" + dir_path + new_state + "osm.net.xml", "-e 350", "--output-trip-file=" + dir_path + new_state + "osm.trips.xml", "--route-file=" + dir_path + new_state + "osm.rou.xml", "--period=0.1", "--validate"], shell=True)
+            subprocess.call(["python.exe","D:\Program Files (x86)\Eclipse" + os.sep + "Sumo" + os.sep + "tools" + os.sep + "randomTrips.py", "--net-file=" + dir_path + new_state + "osm.net.xml", "-e 350", "--output-trip-file=" + dir_path + new_state + "osm.trips.xml", "--route-file=" + dir_path + new_state + "osm.rou.xml", "--period=0.1", "--validate"], shell=True)
             print("done")
             # Commented out the duarouter file because I think randomtrips.py already produces a routes file.
             # print("Creating Routes file")
@@ -317,8 +316,6 @@ class TrafficProblemManager:
             with open(dir_path + new_state + "osm.sumocfg",'w') as f:
                 f.write(config_file)
             print("done")
-
-
 
 
 
