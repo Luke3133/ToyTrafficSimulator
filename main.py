@@ -1,7 +1,7 @@
 import numpy as np
 import os, sys
 import time
-
+from multiprocessing import Pool
 from TrafficProblem.traffic import TrafficProblemManager
 
 
@@ -68,7 +68,19 @@ class DesignerController:
                 self.TrafficManager.runAction(self.actions[-1], self.states[-2], self.states[-1])
 
 
-                # self.new_turn(int(next_action), self.state[-1])
+                # self.new_turn(int(next_action), self.sta te[-1])
+
+            elif "convert" in str(next_action):
+                # Run an action / update the state (action type value)
+
+                self.TrafficManager.convert_network_to_matrix(self.states[-1])
+
+            elif "crude" in str(next_action):
+                network_matrix = self.TrafficManager.run_network_reduction_step(self.states[-1])
+                # with Pool() as pool:
+                #     Result = pool.map(self.TrafficManager.run_network_reduction_function, network_matrix['Edge ID'])
+
+                #(Result)
         return(10)
 
     def print_history(self):
@@ -76,9 +88,8 @@ class DesignerController:
         print("The action history is : " + str(self.actions))
         print("The reward history is : " + str(self.rewards))
 
-
-Traffic = DesignerController("TrafficProblem", "./TrafficProblem/Networks/", True)
-
+if __name__ == '__main__':
+    Traffic = DesignerController("TrafficProblem", "./TrafficProblem/Networks/", True)
 
 class RecommenderController:
     # This class is used to represent the new method of iterating on sequential designs. The user can run the
