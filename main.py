@@ -2,8 +2,14 @@ import numpy as np
 import os, sys
 import time
 from multiprocessing import Pool
+import tqdm
+import pandas as pd
+import shutil
+
 from TrafficProblem.traffic import TrafficProblemManager
 
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
 
 class DesignerController:
     # This class is used to represent the current method of iterating on sequential designs. The user can run the
@@ -53,8 +59,6 @@ class DesignerController:
                 else:
                     runparameter = -1
                 self.rewards.append(self.TrafficManager.runState(self.states[-1], runparameter))
-
-
             elif "action" in str(next_action):
                 # Run an action / update the state (action type value)
                 self.actions.append(str(next_action).replace("action ",""))
@@ -69,19 +73,122 @@ class DesignerController:
 
 
                 # self.new_turn(int(next_action), self.sta te[-1])
-
             elif "convert" in str(next_action):
                 # Run an action / update the state (action type value)
+                self.TrafficManager.convert_network_to_matrix(self.states[-1])
+            elif "crude" in str(next_action):
+                # Generate the test vehicles
+                test_vehicles = self.TrafficManager.set_test_set(self.states[-1],[0,0],[0,0])
+                # Generate teh action set
+                test_streets = self.TrafficManager.generate_test_cases()
 
+                # Convert
                 self.TrafficManager.convert_network_to_matrix(self.states[-1])
 
-            elif "crude" in str(next_action):
+                # Crude
+                self.TrafficManager.debug_mode = False
                 network_matrix = self.TrafficManager.run_network_reduction_step(self.states[-1])
-                # with Pool() as pool:
-                #     Result = pool.map(self.TrafficManager.run_network_reduction_function, network_matrix['Edge ID'])
+                pool = Pool()
+                result_list_tqdm = []
+                for result in tqdm.tqdm(pool.imap_unordered(self.TrafficManager.run_network_reduction_function,network_matrix['Edge ID']), total=len(network_matrix['Edge ID'])):
+                    result_list_tqdm.append(result)
 
-                #(Result)
+                result = pd.DataFrame(result_list_tqdm)
+                result.to_csv("Results.csv", index=False)
+                result = pd.read_csv("Results.csv")
+                best = list(result.loc[result['1'] == result['1'].min()]['0'])
+                print("The best action is: " + best[0])
+
+                # Analyze
+                if not os.path.isdir(dir_path + "\\History\\"):
+                    os.makedirs(dir_path + "\\History\\")
+                    outputdf = pd.DataFrame(list(zip([best[0]], [float(result['1'].min())])))
+                    outputdf.to_csv("History\\PastResults.csv")
+
+                    shutil.rmtree(dir_path + "\\TrafficProblem\\Networks\\Temp\\")
+                else:
+                    df = pd.read_csv("History\\PastResults.csv")
+                    newdf = df.append(list(zip([best[0]], [float(result['1'].min())])))
+                    newdf.to_csv("History\\PastResults.csv")
+                    shutil.rmtree(dir_path + "\\TrafficProblem\\Networks\\Temp\\")
+
+            elif "analyze" in str(next_action):
+                last_state = int(str(self.states[-1]).replace("\\Networks\\", "").replace("\\", ""))
+                result = pd.DataFrame(pd.read_csv("Results" + str(last_state + 1) + ".csv"))
+                best = list(result.loc[result['1'] == result['1'].min()]['0'])
+                print("The best action is: " + best[0])
+
+                if not os.path.isdir(dir_path + "\\History\\"):
+                    os.makedirs(dir_path + "\\History\\")
+                    outputdf = pd.DataFrame(list(zip([best[0]],[float(result['1'].min())])))
+                    outputdf.to_csv("History\\PastResults.csv")
+
+                    os.rmdir(dir_path + "\\TrafficProblem\\Networks\\Temp")
+                else:
+                    df = pd.read_csv("History\\PastResults.csv")
+                    newdf = df.append(list(zip([best[0]],[float(result['1'].min())])))
+                    newdf.to_csv("History\\PastResults.csv")
+                    shutil.rmtree(dir_path + "\\TrafficProblem\\Networks\\Temp\\")
+
+            elif "skip" in str(next_action):
+                if self.states[-1] == "\\Networks\\Original\\":
+                    self.states.append("\\Networks\\1\\")
+                else:
+                    last_state = int(str(self.states[-1]).replace("\\Networks\\", "").replace("\\", ""))
+                    self.states.append("\\Networks\\" + str(last_state + 1) + "\\")
+
+            elif "next" in str(next_action):
+                last_state = str(self.states[-1]).replace("\\Networks\\", "").replace("\\", "")
+                temploc = ""
+                if last_state == "Original":
+                    temploc = ""
+                else:
+                    temploc = str(int(last_state) + 1)
+                result = pd.DataFrame(pd.read_csv("Results" + temploc + ".csv"))
+                best = list(result.loc[result['1'] == result['1'].min()]['0'])
+                self.run_next_iteration(best[0])
+
+
         return(10)
+
+    def run_next_iteration(self, best_action):
+
+        # Run an action / update the state (action type value)
+        self.actions.append("remove " + best_action)
+        print("remove " + best_action)
+        # Set the new state for the action to take us to
+        if self.states[-1] == "\\Networks\\Original\\":
+            self.states.append("\\Networks\\1\\")
+        else:
+            last_state = int(str(self.states[-1]).replace("\\Networks\\", "").replace("\\", ""))
+            self.states.append("\\Networks\\" + str(last_state + 1) + "\\")
+        self.TrafficManager.runAction(self.actions[-1], self.states[-2], self.states[-1])
+
+        print(self.states[-1])
+        self.TrafficManager.convert_network_to_matrix(self.states[-1])
+
+        # Run crude
+        self.TrafficManager.debug_mode = False
+        network_matrix = self.TrafficManager.run_network_reduction_step(self.states[-1])
+        pool = Pool()
+        result_list_tqdm = []
+        for result in tqdm.tqdm(
+                pool.imap_unordered(self.TrafficManager.run_network_reduction_function, network_matrix['Edge ID']),
+                total=len(network_matrix['Edge ID'])):
+            result_list_tqdm.append(result)
+        result = pd.DataFrame(result_list_tqdm)
+        last_state = int(str(self.states[-1]).replace("\\Networks\\", "").replace("\\", ""))
+        result.to_csv("Results" + str(last_state + 1) + ".csv", index=False)
+        result = pd.read_csv("Results" + str(last_state + 1) + ".csv")
+        best = list(result.loc[result['1'] == result['1'].min()]['0'])
+        print("The best action is: " + best[0])
+
+        # Analyze
+        df = pd.read_csv("History\\PastResults.csv")
+        newdf = df.append(list(zip([best[0]], [float(result['1'].min())])))
+        newdf.to_csv("History\\PastResults.csv")
+        shutil.rmtree(dir_path + "\\TrafficProblem\\Networks\\Temp\\")
+
 
     def print_history(self):
         print("The states history is : " + str(self.states))
