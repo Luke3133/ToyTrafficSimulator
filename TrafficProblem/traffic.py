@@ -24,7 +24,7 @@ from itertools import chain, combinations
 import traci
 import traci.constants
 
-sumoBinary = "D:\Program Files (x86)\Eclipse" + os.sep + "Sumo" + os.sep + "bin" + os.sep + "sumo-gui.exe"
+sumoBinary = "D:\Program Files (x86)\Eclipse" + os.sep + "Sumo" + os.sep + "bin" + os.sep + "sumo.exe"
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -47,8 +47,9 @@ class TrafficProblemManager:
     crude_counter=0
 
     test_cars = []
-    busy_street = "-23353548#1" # We wish to reduce traffic on this street
-    action_set = ["-25156946#0","-23353543","-23353378#0","-23353548#2","-23353532#3"]
+    test_street = "-23353548#1" # We wish to reduce traffic on this street
+    # action_set = ["-25156946#0","-23353543","-23353378#0","-23353548#2","-23353532#3"]
+    action_set = ["-1069087493#1","-23353548#1","-25156946#0","-23353553#0","-23353532#3","-1082152568"]
     test_set = []
     def __init__(self,debug):
         self.temp.append(['.Original/'])
@@ -56,9 +57,7 @@ class TrafficProblemManager:
 
     def set_test_set(self,state, start, end):
         # Generate start points
-        start = [1729.64,1183.30]
-        end = [1549,753]
-        cov = np.matrix([[10000,0],[0,10000]])
+        cov = np.matrix([[4000,0],[0,4000]])
         z = np.random.multivariate_normal(start,cov, size=5)
         z2 = np.random.multivariate_normal(end, cov, size=5)
 
@@ -82,14 +81,14 @@ class TrafficProblemManager:
             found = False
             try:
                 edge_index = From.index(node_id)
-                closest_start_edges.append(Node_ID[edge_index])
+                closest_start_edges.append(str(Node_ID[edge_index]))
                 found = True
             except ValueError:
                 print("Value " + str(node_id) + " not found in From")
             if found == False:
                 try:
                     edge_index = To.index(node_id)
-                    closest_start_edges.append(Node_ID[edge_index])
+                    closest_start_edges.append(str(Node_ID[edge_index]))
                 except ValueError:
                     print("Value " + str(node_id) + " not found in To")
             #print("The car was generated on edge: " + closest_start_edges[-1])
@@ -104,7 +103,7 @@ class TrafficProblemManager:
             found = False
             try:
                 edge_index = From.index(node_id)
-                closest_end_edges.append(Node_ID[edge_index])
+                closest_end_edges.append(str(Node_ID[edge_index]))
                 found = True
             except ValueError:
                 print("Value " + str(node_id) + " not found in From")
@@ -112,7 +111,7 @@ class TrafficProblemManager:
             if found == False:
                 try:
                     edge_index = To.index(node_id)
-                    closest_end_edges.append(Node_ID[edge_index])
+                    closest_end_edges.append(str(Node_ID[edge_index]))
                     # print("Value " + str(node_id) + " found in To at " + str(edge_index))
                 except ValueError:
                     print("Value " + str(node_id) + " not found in To")
@@ -120,23 +119,16 @@ class TrafficProblemManager:
         self.test_cars = np.array([closest_start_edges, closest_end_edges]).T
         return self.test_cars
 
-    def generate_test_cases(self):
-        test_set = powerset(self.action_set)
-        self.test_set = test_set
+    def generate_test_cases(self, action_set):
+        test_set = powerset(action_set)
+        self.test_set = list(test_set)
         return self.test_set
 
 
-    def runState(self, state, runparameter):
-
-        #print("Running State : " + state + "osm.sumocfg")
-        #print(dir_path + state)
-        sumoCmd = [sumoBinary, "-c",  dir_path + state + "osm.sumocfg", "--time-to-teleport=10000", "--start", "--quit-on-end", "--verbose=False"] #"--duration-log.disable=True","--duration-log.statistics=False"
+    def runState(self, state, runparameter, testvehicles = "", teststreet = ""):
+        sumoCmd = [sumoBinary, "-c",  dir_path + state + "osm.sumocfg", "--time-to-teleport=10000", "--start", "--quit-on-end", "--verbose=False","--duration-log.disable=True","--duration-log.statistics=False", "--no-step-log=True","--threads=4"]
         if self.debug_mode: print("Starting SUMO")
         traci.start(sumoCmd)
-        #traci.gui.setSchema("View #0", "emissions")
-        #traci.gui.setSchema("View #0", "faster standard")
-        if self.debug_mode: print("Sumo Started")
-
         # Run the network in SUMO
         j = 0  # j is the time step
         # Set the end point
@@ -145,31 +137,55 @@ class TrafficProblemManager:
         else:
             last_j = 500
         traci.simulationStep(50)
-        initial_journey_time = 0
-
+        initial_journey_time = {}
+        total_journey_time = 0
+        vehicles_still_travelling = []
+        counter = 0
+        for vehicle in testvehicles:
+            vehicles_still_travelling.append(["TestVehicle_" + str(counter), vehicle[0], vehicle[1]])
+            counter += 1
 
         while (j < last_j):
             # for each time step
             traci.simulationStep()
-            time.sleep(0.5)
             if j == 5:
+                # add test vehicles
+                vehicle_counter = 0
+                for vehicle in testvehicles:
+                    # print(vehicle)
+                    # print(vehicle[0])
+                    # print(vehicle[1])
+                    vehicle_route = traci.simulation.findRoute(fromEdge = str(vehicle[0]), toEdge= str(vehicle[1]))
+                    traci.route.add("TestRoute_" + str(vehicle_counter),vehicle_route.edges)
+                    traci.vehicle.add("TestVehicle_" + str(vehicle_counter), "TestRoute_" + str(vehicle_counter))
+                    initial_journey_time["TestVehicle_" + str(vehicle_counter)] = traci.simulation.getTime()
+                    vehicle_counter += 1
+            if j > 6:
+                for vehicle in vehicles_still_travelling:
+                    if self.check_vehicle_position(vehicle[0], vehicle[2]):
+                        # This vehicle has reached the end point
+                        total_journey_time = total_journey_time + traci.simulation.getTime() - initial_journey_time[vehicle[0]]
+                        #print(str(vehicle[0]) + " has reached the end!")
+                        # Remove this vehicle from list
+                        vehicles_still_travelling.remove(vehicle)
+                       # print(vehicles_still_travelling)
+                        #print(total_journey_time)
+                    last_j = j + 500 # Play about with this value (It is used to set a cap on simulation times)
 
-                route = traci.simulation.findRoute(self.mystreet, self.endstreet)
-                traci.route.add("TestRoute",route.edges)
-                traci.vehicle.add("TestVehicle", "TestRoute")
-                traci.vehicle.highlight("TestVehicle")
-                initial_journey_time = traci.simulation.getTime()
-            if j > 5:
-                if self.check_vehicle_position("TestVehicle", self.endstreet):
-                    total_journey_time = traci.simulation.getTime() - initial_journey_time
+                if len(vehicles_still_travelling) == 0:
                     traci.close(wait=False)
-                    return(total_journey_time)
+                   #print(total_journey_time)
+                    return total_journey_time
 
+            if j > last_j:
+                j = last_j
             j += 1
+        for vehicle in vehicles_still_travelling:
+            total_journey_time = total_journey_time + traci.simulation.getTime() - initial_journey_time[vehicle[0]]
 
-        total_journey_time = traci.simulation.getTime() - initial_journey_time
+
         traci.close(wait=False)
-        return (total_journey_time)
+        return total_journey_time
 
     def check_vehicle_position(self, VehID, TargetEdge):
         current_edge_ID = traci.vehicle.getRoadID(VehID)
@@ -179,24 +195,28 @@ class TrafficProblemManager:
         else:
             return False
     def runAction(self,action, state, new_state, flatfiles=True):
-        action = str(action).split(" ")
-        if self.debug_mode: print("Running action " + action[0] + ", " + action[1] + " on state " + state)
-        #("Running action " + action[0] + ", " + action[1] + " on state " + state)
-        # Check action type
-        if action[0] == "remove":
-            # We need to remove a road
-            if self.debug_mode: print("Removing road : " + action[1])
-            network_file = state + "osm.net.xml"
+        if self.debug_mode: print("Removing road(s) : " + str(action))
+        network_file = state + "osm.net.xml"
 
 
-            # Check if the directory of the new file exists yet
-            if not os.path.isdir(dir_path + new_state):
-                os.makedirs(dir_path + new_state)
-                if self.debug_mode: print("Created new directory in " + new_state)
+        # Check if the directory of the new file exists yet
+        if not os.path.isdir(dir_path + new_state):
+            os.makedirs(dir_path + new_state)
+            if self.debug_mode: print("Created new directory in " + new_state)
 
-            subprocess.run(["netconvert", "--sumo-net-file=" + dir_path + state + "osm.net.xml", "--remove-edges.explicit", "" + action[1] + "," + action[1].replace("-","") + "","--output-file=" + dir_path + new_state + "osm.net.xml", "--lefthand", "--no-warnings", "--no-turnarounds"],  stdout=subprocess.DEVNULL)
+            # If the state already exists, no need to make it again. Skip to next step!!!
+            final_actions = ""
+            # prepare action set
+            for this_action in action:
+                if final_actions == "":
+                    final_actions = str(this_action) + "," + str(this_action).replace("-", "")
+                else:
+                    final_actions = final_actions + "," + str(this_action) + "," + str(this_action).replace("-","")
+
+            # subprocess.run(["netconvert", "--sumo-net-file=" + dir_path + state + "osm.net.xml", "--remove-edges.explicit", "" + action[1] + "," + action[1].replace("-","") + "","--output-file=" + dir_path + new_state + "osm.net.xml", "--lefthand", "--no-warnings", "--no-turnarounds"])#,  stdout=subprocess.DEVNULL)
+            subprocess.run(["netconvert", "--sumo-net-file=" + dir_path + state + "osm.net.xml", "--remove-edges.explicit", "" + final_actions + "","--output-file=" + dir_path + new_state + "osm.net.xml", "--lefthand", "--no-warnings", "--no-turnarounds"],  stdout=subprocess.DEVNULL)
             subprocess.call(["python.exe", "D:\Program Files (x86)\Eclipse" + os.sep + "Sumo" + os.sep + "tools" + os.sep + "randomTrips.py",
-                             "--net-file=" + dir_path + new_state + "osm.net.xml", "--route-file=" + dir_path + new_state + "osm.rou.xml", "--period=0.4", "--output-trip-file=" + dir_path + new_state + "osm.trips.xml"],  stdout=subprocess.DEVNULL)
+                             "--net-file=" + dir_path + new_state + "osm.net.xml", "--route-file=" + dir_path + new_state + "osm.rou.xml", "--period=1", "--output-trip-file=" + dir_path + new_state + "osm.trips.xml"],  stdout=subprocess.DEVNULL)
 
             # # Create the config file
 
@@ -352,14 +372,17 @@ class TrafficProblemManager:
 
     def run_network_reduction_function(self, edge):
         state = "\\Networks\\Original\\"
+        regen_network = True
+        # Calculate this test_case
+        test_streets = self.test_set[edge]
 
-        if not os.path.isdir(dir_path + "\\Networks\\Temp\\" + edge + "\\"):
-            self.runAction("remove " + edge, state, "\\Networks\\Temp\\" + edge + "\\", flatfiles=False)
-        # print("Running network : " + str(counter_pool) + " of " + str(2597))
-        output = self.runState("\\Networks\\Temp\\" + edge + "\\", 10000)
-        # counter_pool = counter_pool + 1
+        if regen_network:
+            if not os.path.isdir(dir_path + "\\Networks\\Temp\\" + edge + "\\"):
+                self.runAction(test_streets, state, "\\Networks\\Temp\\" + edge + "\\")
+        result = self.runState("\\Networks\\Temp\\" + str(edge) + "\\", 2000, self.test_cars)
 
-        return [edge, output]
+        return result
+
 
 def powerset(s):
     s = list(s)
