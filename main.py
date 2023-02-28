@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import os, sys
 import time
@@ -7,7 +9,7 @@ import pandas as pd
 import shutil
 from TrafficProblem.traffic import TrafficProblemManager
 from itertools import chain
-
+from pathlib import Path
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
 class DesignerController:
@@ -74,7 +76,7 @@ class DesignerController:
 
 
                 # self.new_turn(int(next_action), self.sta te[-1])
-            elif "crude" in str(next_action):
+                # elif "crude" in str(next_action):
                 # Generate the test vehicles
                 # test_vehicles = self.TrafficManager.set_test_set(self.states[-1], [1729.64, 1183.30], [1549, 753])
                 # test_vehicles = self.TrafficManager.set_test_set(self.states[-1], [1729.64, 1250], [1549, 725])
@@ -112,99 +114,191 @@ class DesignerController:
                 output_csv = pd.DataFrame([df_row], columns=["Design","Time"])
                 output_csv.to_csv("History\\crudeoutput_final.csv", index=False)
                 print(output_csv)
-            elif "set" in str(next_action):
-                self.TrafficManager.set_test_set(self.states[-1], [2562, 412], [1752, 1392])
-                self.TrafficManager.generate_test_cases(self.TrafficManager.action_set)
+            elif "cars" in str(next_action):
+                self.TrafficManager.set_test_set(self.states[-1], [1752, 1392], [2562, 412])
+                print("\nThe test vehicles are:")
+                print(self.TrafficManager.test_cars)
+            elif "streets" in str(next_action):
 
+                print("\nThe test streets are:")
+                print(self.TrafficManager.test_set)
             elif "next" in str(next_action):
-                test_vehicles = self.TrafficManager.test_cars
+                if type(self.TrafficManager.test_cars) == list:
+                    self.TrafficManager.set_test_set(self.states[-1], [1752, 1392], [2562, 412])
+                self.TrafficManager.generate_test_cases(self.TrafficManager.action_set)
                 test_streets = self.TrafficManager.test_set
                 test_streets_vector = list(range(0,len(test_streets)))
+                self.TrafficManager.debug_mode = False
 
                 pool = Pool()
                 result_list_tqdm = []
-                for result in tqdm.tqdm(pool.imap_unordered(self.TrafficManager.run_network_reduction_function, test_streets_vector), total=len(test_streets)):
+                for result in tqdm.tqdm(pool.imap(self.TrafficManager.run_network_reduction_function, test_streets_vector), total=len(test_streets)):
                     result_list_tqdm.append(result)
-                result = pd.DataFrame(result_list_tqdm)
-                print(result)
-                min_result = min(result)
-                min_index = result.index(min_result)
-                print("The minimum value is " + min_result + " located at " + min_index)
 
+                min_result = min(result_list_tqdm)
+                new_list = sorted(result_list_tqdm)
+                print("\nOriginal list:")
+                print(result_list_tqdm)
+                print("\nNew List:")
+                print(new_list)
+                min_index = result_list_tqdm.index(min_result)
+                print("The minimum value is: " + str(min_result) + ", located at: " + str(min_index))
+                print("\nThe optimal streets are:")
+                print(test_streets[min_index])
+                data = {
+                    "Design": [min_index],
+                    "Time": [min_result]
+                }
+                df_row = pd.DataFrame(data)
+                my_file = Path(dir_path + "\\History\\crudeoutput_final.csv")
+                if my_file.is_file():
+                    history = pd.read_csv("History\\crudeoutput_final.csv")
+                    history = pd.concat([history, df_row])
+                    history.to_csv("History\\crudeoutput_final.csv",index=False)
+                else:
 
+                    df_row = [min_index, min_result]
+                    output_csv = pd.DataFrame([df_row], columns=["Design", "Time"])
+                    output_csv.to_csv("History\\crudeoutput_final.csv", index=False)
 
-
-
-                # crude_output = []
-                # test_case_counter = 0
-                # self.TrafficManager.debug_mode = False
+            elif "ai" in str(next_action):
+                print("Running AI assistance")
+                self.TrafficManager.debug_mode = False
+                # Set cars set if its empty
+                if type(self.TrafficManager.test_cars) == list:
+                    self.TrafficManager.set_test_set(self.states[-1], [1752, 1392], [2562, 412])
                 #
-                # for test_cases in test_streets:
-                #     # Make a directory to hold the networks
-                #     print(str((test_case_counter / len(test_streets)) * 100) + "%")
-                #     if not test_cases:
-                #         # # this is the case where we have the original network (no changes)
-                #         result = self.TrafficManager.runState("\\Networks\\Temp\\" + str(test_case_counter) + "\\", 2000, test_vehicles, self.TrafficManager.test_street)
-                #         crude_output.append(result)
-                #     else:
-                #         # print("Running " + str(test_case_counter))
-                #         # this is the case where we make some changes
-                #         self.TrafficManager.runAction(test_cases, "\\Networks\\Original\\", "\\Networks\\Temp\\" + str(test_case_counter) + "\\")
-                #         result = self.TrafficManager.runState("\\Networks\\Temp\\" + str(test_case_counter) + "\\", 2000, test_vehicles, self.TrafficManager.test_street)
-                #         crude_output.append(result)
-                #     test_case_counter += 1
-                # min_output = min(crude_output)
-                # min_index = crude_output.index(min_output)
-                # data = {
-                #     "Design": [min_index],
-                #     "Time": [min_output]
-                # }
-                # df_row = pd.DataFrame(data)
-                # print("Min row = " + str(df_row))
-                # history = pd.read_csv("History\\crudeoutput_final.csv")
-                # history = pd.concat([history, df_row])
-                # history.to_csv("History\\crudeoutput_final.csv",index=False)
+                self.TrafficManager.generate_test_cases(self.TrafficManager.action_set)
+
+                all_actions = self.TrafficManager.test_set
+                current_action = all_actions[0] # This is the current state (root node of the decision tree)
+                #h = str(all_actions[0]) + "a" + str(all_actions[1])
+                h = str(all_actions[0]) # h will be an ordered list for the current state
+
+                # Perform MCTS
+                self.N = {}
+                self.Na = {}
+                self.Q = {}
+                self.max_depth = 5
+
+                i = 0
+                while i < 62:
+                    self.MCTS(h, current_action, d=1)
+                    i += 1
+
+                # Return best action:
+                #UCB's of next states
+                UCB = []
+                #current state = h
+                potential_actions = self.get_next_actions(self.TrafficManager.test_set, current_action)
+                for action in potential_actions:
+                    index = str(h) + "a" + str(action)
+                    UCB.append(self.Q[index])
+
+                print(UCB)
+                best_action_index = UCB.index(max(UCB))
+                print("The best action is: " + str(potential_actions[best_action_index]))
 
         return
 
-    def run_next_iteration(self, best_action):
+    def utility(self, traffic_flow, omega):
+        # This function is used to return the reward function for a given state (using the traffic flow as a parameter)
 
-        # Run an action / update the state (action type value)
-        self.actions.append("remove " + best_action)
-        print("remove " + best_action)
-        # Set the new state for the action to take us to
-        if self.states[-1] == "\\Networks\\Original\\":
-            self.states.append("\\Networks\\1\\")
+        # I test using 1/x, since this favours lower traffic flows
+        # TODO: Implement a reward function which uses omega
+        u = 1 / traffic_flow
+        return u
+    def MCTS(self,h,s,d):
+        # Temperature parameters
+        c = 1
+        gamma = 0.5
+
+        # If we haven't been to this node before (with this history), set the count to 0
+        if not str(h) in self.N:
+            self.N[str(h)] = 0
+        # Potential actions is a list containing roads which we can remove to get to the next state (all 1 road only)
+        potential_actions = self.get_next_actions(self.TrafficManager.test_set, s)
+        # If we haven't been to this node before, set Na and Q values to 0
+        if self.N[str(h)] == 0:
+            for action in potential_actions:
+                index = str(h) + "a" + str(action)
+                self.Na[index] = 0
+                self.Q[index] = 0
+        # Calculate the UCB for each of the potential actions
+        UCB = []
+        for action in potential_actions:
+            index = str(h) + "a" + str(action)
+            if self.N[str(h)] == 0 or self.Na[index] == 0:
+                # We cant calculate log(0) or divide by 0
+                UCB.append(self.Q[index])
+            else:
+                # We can calculate the true UCB value
+                UCB.append(self.Q[index] + c * math.sqrt(math.log(self.N[str(h)]) / self.Na[index]))
+        # print(UCB)
+        # a_prime is the index of the optimum action from the potential_actions set.
+        a_prime = UCB.index(min(UCB))
+        # s_prime can be calculated with 100% accuracy since we are working with a graph problem
+        s_prime = s + potential_actions[a_prime]
+        h_prime = str(h) + "a" + str(potential_actions[a_prime])
+        d_prime = d + 1
+        index = str(h) + "a" + str(potential_actions[a_prime])
+        # The reward is equal to the increase in utility (Which comes from the surrogate model)
+        # r = utility(s_prime) - utility(s)
+        # print(self.Na)
+
+        if self.Na[index] == 0 or d == self.max_depth:
+            q = gamma * self.est_value(h, s_prime,d_prime)
         else:
-            last_state = int(str(self.states[-1]).replace("\\Networks\\", "").replace("\\", ""))
-            self.states.append("\\Networks\\" + str(last_state + 1) + "\\")
-        self.TrafficManager.runAction(self.actions[-1], self.states[-2], self.states[-1])
+            q = gamma * self.MCTS(h_prime, s_prime, d_prime)
 
-        print(self.states[-1])
-        self.TrafficManager.convert_network_to_matrix(self.states[-1])
+        self.N[str(h)] = self.N[str(h)] + 1
 
-        # Run crude
-        self.TrafficManager.debug_mode = False
-        network_matrix = self.TrafficManager.run_network_reduction_step(self.states[-1])
-        pool = Pool()
-        result_list_tqdm = []
-        for result in tqdm.tqdm(
-                pool.imap_unordered(self.TrafficManager.run_network_reduction_function, network_matrix['Edge ID']),
-                total=len(network_matrix['Edge ID'])):
-            result_list_tqdm.append(result)
-        result = pd.DataFrame(result_list_tqdm)
-        last_state = int(str(self.states[-1]).replace("\\Networks\\", "").replace("\\", ""))
-        result.to_csv("Results" + str(last_state + 1) + ".csv", index=False)
-        result = pd.read_csv("Results" + str(last_state + 1) + ".csv")
-        best = list(result.loc[result['1'] == result['1'].min()]['0'])
-        print("The best action is: " + best[0])
+        self.Na[index] = self.Na[index] + 1
+        self.Q[index] = self.Q[index] + ((q - self.Q[index]) / self.Na[index])
+        print(self.Q)
+        return q
 
-        # Analyze
-        df = pd.read_csv("History\\PastResults.csv")
-        newdf = df.append(list(zip([best[0]], [float(result['1'].min())])))
-        newdf.to_csv("History\\PastResults.csv")
-        shutil.rmtree(dir_path + "\\TrafficProblem\\Networks\\Temp\\")
+
+    def est_value(self, h, s, d):
+        # Predict the value for an unseen node
+        # I will trial using the simulation directly initially.
+        # Later, I will try to train a surrogate model (using bayesian optimisation + graph kernel)
+
+        # Run the current state (s_prime)
+        # print(s)
+        index = 0
+        temp_s = set(s)
+        # print(temp_s)
+        index = 0
+        i = 0
+        for value in self.TrafficManager.test_set:
+            if set(value) == set(temp_s):
+                index = i
+            i += 1
+        # index = self.TrafficManager.test_set.index(temp_s)
+
+        # Run simulation for the network at index = {index}
+        # TODO surrogate model
+        result = self.TrafficManager.runState("\\Networks\\Temp\\" + str(index) + "\\", 2000, self.TrafficManager.test_cars)
+        # print("The output of state " + str(index) + " is equal to " + str(result))
+        return result
+    def get_next_actions(self, all_actions, current_action):
+
+        next_actions = []
+        print("The current action is:")
+        print(current_action)
+
+       # print("The possible next states are:")
+        for action in all_actions:
+            if set(current_action) <= set(action):
+                if len(action) == len(current_action) + 1:
+                    next_actions.append([x for x in action if x not in current_action])
+
+        #print(next_actions)
+        return next_actions
+
 
 
 if __name__ == '__main__':
     Traffic = DesignerController("TrafficProblem", "./TrafficProblem/Networks/", True)
+

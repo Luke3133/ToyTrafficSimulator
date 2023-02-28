@@ -42,14 +42,15 @@ class TrafficProblemManager:
     current_vehicles = []
     lane_information = {}
     initial_matrix = []
-    mystreet = "-23353430"
-    endstreet = "-23353724#9"
+
     crude_counter=0
 
     test_cars = []
     test_street = "-23353548#1" # We wish to reduce traffic on this street
     # action_set = ["-25156946#0","-23353543","-23353378#0","-23353548#2","-23353532#3"]
-    action_set = ["-1069087493#1","-23353548#1","-25156946#0","-23353553#0","-23353532#3","-1082152568"]
+    # action_set = ["-1069087493#1","-23353548#1","-25156946#0","-23353553#0","-23353532#3","-1082152568"]
+    action_set = ["-43308108#6","-43308108#8","-25099570","-1069087493#1","-23353543"]
+
     test_set = []
     def __init__(self,debug):
         self.temp.append(['.Original/'])
@@ -57,9 +58,9 @@ class TrafficProblemManager:
 
     def set_test_set(self,state, start, end):
         # Generate start points
-        cov = np.matrix([[4000,0],[0,4000]])
-        z = np.random.multivariate_normal(start,cov, size=5)
-        z2 = np.random.multivariate_normal(end, cov, size=5)
+        cov = np.matrix([[3000,0],[0,3000]])
+        z = np.random.multivariate_normal(start,cov, size=20)
+        z2 = np.random.multivariate_normal(end, cov, size=20)
 
         Nodes = pd.read_csv(dir_path + state + "flatfiles\\nodes.csv")
         Edges = pd.read_csv(dir_path + state + "flatfiles\\edges.csv")
@@ -122,6 +123,13 @@ class TrafficProblemManager:
     def generate_test_cases(self, action_set):
         test_set = powerset(action_set)
         self.test_set = list(test_set)
+        temp_set = []
+        for item in self.test_set:
+            if len(item) == 1:
+                temp_set.append([item[0]])
+            else:
+                temp_set.append(list(item))
+        self.test_set = temp_set
         return self.test_set
 
 
@@ -155,7 +163,7 @@ class TrafficProblemManager:
                     # print(vehicle)
                     # print(vehicle[0])
                     # print(vehicle[1])
-                    vehicle_route = traci.simulation.findRoute(fromEdge = str(vehicle[0]), toEdge= str(vehicle[1]))
+                    vehicle_route = traci.simulation.findRoute(fromEdge = "" + str(vehicle[1]) + "", toEdge= "" + str(vehicle[0]) + "")
                     traci.route.add("TestRoute_" + str(vehicle_counter),vehicle_route.edges)
                     traci.vehicle.add("TestVehicle_" + str(vehicle_counter), "TestRoute_" + str(vehicle_counter))
                     initial_journey_time["TestVehicle_" + str(vehicle_counter)] = traci.simulation.getTime()
@@ -214,9 +222,9 @@ class TrafficProblemManager:
                     final_actions = final_actions + "," + str(this_action) + "," + str(this_action).replace("-","")
 
             # subprocess.run(["netconvert", "--sumo-net-file=" + dir_path + state + "osm.net.xml", "--remove-edges.explicit", "" + action[1] + "," + action[1].replace("-","") + "","--output-file=" + dir_path + new_state + "osm.net.xml", "--lefthand", "--no-warnings", "--no-turnarounds"])#,  stdout=subprocess.DEVNULL)
-            subprocess.run(["netconvert", "--sumo-net-file=" + dir_path + state + "osm.net.xml", "--remove-edges.explicit", "" + final_actions + "","--output-file=" + dir_path + new_state + "osm.net.xml", "--lefthand", "--no-warnings", "--no-turnarounds"],  stdout=subprocess.DEVNULL)
+            subprocess.run(["netconvert", "--sumo-net-file=" + dir_path + state + "osm.net.xml", "--remove-edges.explicit", "" + final_actions + "","--output-file=" + dir_path + new_state + "osm.net.xml","--lefthand", "--no-warnings", "--no-turnarounds"],  stdout=subprocess.DEVNULL)
             subprocess.call(["python.exe", "D:\Program Files (x86)\Eclipse" + os.sep + "Sumo" + os.sep + "tools" + os.sep + "randomTrips.py",
-                             "--net-file=" + dir_path + new_state + "osm.net.xml", "--route-file=" + dir_path + new_state + "osm.rou.xml", "--period=1", "--output-trip-file=" + dir_path + new_state + "osm.trips.xml"],  stdout=subprocess.DEVNULL)
+                             "--net-file=" + dir_path + new_state + "osm.net.xml", "--route-file=" + dir_path + new_state + "osm.rou.xml", "--period=1", "-e 75", "--weights-output-prefix=" + dir_path + new_state + "routes", "--random", "--seed=125", "--fringe-factor=10", "--output-trip-file=" + dir_path + new_state + "osm.trips.xml"],  stdout=subprocess.DEVNULL)
 
             # # Create the config file
 
@@ -372,13 +380,11 @@ class TrafficProblemManager:
 
     def run_network_reduction_function(self, edge):
         state = "\\Networks\\Original\\"
-        regen_network = True
         # Calculate this test_case
         test_streets = self.test_set[edge]
 
-        if regen_network:
-            if not os.path.isdir(dir_path + "\\Networks\\Temp\\" + edge + "\\"):
-                self.runAction(test_streets, state, "\\Networks\\Temp\\" + edge + "\\")
+        if not os.path.isdir(dir_path + "\\Networks\\Temp\\" + str(edge) + "\\"):
+            self.runAction(test_streets, state, "\\Networks\\Temp\\" + str(edge) + "\\")
         result = self.runState("\\Networks\\Temp\\" + str(edge) + "\\", 2000, self.test_cars)
 
         return result
