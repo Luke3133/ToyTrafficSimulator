@@ -11,7 +11,9 @@ from TrafficProblem.traffic import TrafficProblemManager
 from itertools import chain
 from pathlib import Path
 dir_path = os.path.dirname(os.path.realpath(__file__))
-
+from agent import Agent
+from BO import GraphBO
+import random
 class DesignerController:
     # This class is used to represent the current method of iterating on sequential designs. The user can run the
     # state, look at the output and choose an action. This process continues until the user is satisfied.
@@ -31,14 +33,16 @@ class DesignerController:
     recommended_actions = []
     problemfiles = ""
 
-    def __init__(self, problem_files, state_files, debug_mode):
+    def __init__(self, problem_files, state_files, debug_mode, beta_1, beta_2, p_omega):
         self.problemfiles = problem_files
         self.statefiles = state_files
 
         if self.problemfiles == "TrafficProblem":
             self.TrafficManager = TrafficProblemManager(debug_mode)
             self.states.append("\\Networks\\Original\\")
-
+            self.beta_1 = beta_1
+            self.beta_2 = beta_2
+            self.p_omega = p_omega
         self.actionManager()
 
     def actionManager(self):
@@ -171,8 +175,43 @@ class DesignerController:
                 self.TrafficManager.generate_test_cases(self.TrafficManager.action_set)
 
                 all_actions = self.TrafficManager.test_set
-                current_action = all_actions[0] # This is the current state (root node of the decision tree)
-                #h = str(all_actions[0]) + "a" + str(all_actions[1])
+                current_state = all_actions[0] # This is the current state (root node of the decision tree)
+
+                # Get kernel function
+                self.surrogate_model = GraphBO(all_actions)
+                #
+                # # Generate a set of random numbers to be GP training data
+                # x_train_index = list(random.sample(range(len(all_actions)), 16))
+                # x_train = [all_actions[i] for i in x_train_index]
+                #
+                # # TODO: Fix Pooling (it throws an error in this context)
+                # # pool = Pool()
+                # # params = [(os.sep + "Networks\\Temp" + os.sep + str(x) + os.sep,1000,self.TrafficManager.test_cars, "") for x in x_train_index]
+                # # for result in tqdm.tqdm(pool.imap(self.TrafficManager.runState, params), total=len(x_train)):
+                # #     y_train.append(result)
+                #
+                # # Get y training data
+                # y_train = []
+                # for index in x_train_index:
+                #     y_train.append(self.TrafficManager.runState(os.sep + "Networks\\Temp" + os.sep + str(index) + os.sep, 1000, self.TrafficManager.test_cars))
+                # x_test = False
+                # x_test_index = [5]
+                #
+                # while x_test == False:
+                #     if x_test_index[0] in x_train_index:
+                #         x_test_index = random.sample(range(len(all_actions)), 1)
+                #     else:
+                #         x_test = True
+                # # Train the surrogate model on these data
+                # y_prediction, sd = surrogate_model.GP_New_X(x_test_index, x_train_index, x_train, y_train)
+                # y_test_true = []
+                # for x in x_test_index:
+                #     y_test_true.append(self.TrafficManager.runState(os.sep + "Networks\\Temp" + os.sep + str(x) + os.sep, 1000, self.TrafficManager.test_cars))
+                # print("x_test = " + str(x_test_index))
+                # print("y_test_true = " + str(y_test_true) + " and y_test_pred = " + str(y_prediction) + " with sd = " + str(sd))
+
+                self.agent = Agent(self.beta_1, self.beta_2, self.p_omega, surrogate_model)
+
                 h = str(all_actions[0]) # h will be an ordered list for the current state
 
                 # Perform MCTS
@@ -182,29 +221,31 @@ class DesignerController:
                 self.max_depth = 5
 
                 i = 0
-                while i < 62:
-                    self.MCTS(h, current_action, d=1)
+                while i < 5:
+                    self.MCTS(h, current_state, d=1)
                     i += 1
 
-                # Return best action:
-                #UCB's of next states
-                UCB = []
-                #current state = h
-                potential_actions = self.get_next_actions(self.TrafficManager.test_set, current_action)
-                for action in potential_actions:
-                    index = str(h) + "a" + str(action)
-                    UCB.append(self.Q[index])
-
-                print(UCB)
-                best_action_index = UCB.index(max(UCB))
-                print("The best action is: " + str(potential_actions[best_action_index]))
+                # # Return best action:
+                # #UCB's of next states
+                # UCB = []
+                # #current state = h
+                # potential_actions = self.get_next_actions(self.TrafficManager.test_set, current_action)
+                # for action in potential_actions:
+                #     index = str(h) + "a" + str(action)
+                #     UCB.append(self.Q[index])
+                #
+                # print(UCB)
+                # best_action_index = UCB.index(max(UCB))
+                # print("The best action is: " + str(potential_actions[best_action_index]))
 
         return
 
-    def utility(self, traffic_flow, omega):
+    def utility(self, state, omega):
         # This function is used to return the reward function for a given state (using the traffic flow as a parameter)
-
         # I test using 1/x, since this favours lower traffic flows
+        state_number = self.TrafficManager.action_set.index(state)
+        traffic_flow = self.surrogate_model.GP_New_X()
+
         # TODO: Implement a reward function which uses omega
         u = 1 / traffic_flow
         return u
@@ -300,5 +341,5 @@ class DesignerController:
 
 
 if __name__ == '__main__':
-    Traffic = DesignerController("TrafficProblem", "./TrafficProblem/Networks/", True)
+    Traffic = DesignerController("TrafficProblem", "./TrafficProblem/Networks/", True,1,1,1)
 

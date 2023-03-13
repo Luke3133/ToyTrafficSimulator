@@ -134,6 +134,9 @@ class TrafficProblemManager:
 
 
     def runState(self, state, runparameter, testvehicles = "", teststreet = ""):
+    # def runState(self, params):
+    #     (state, runparameter, testvehicles, teststreet) = params
+    #     print(dir_path + state + "osm.sumocfg")
         sumoCmd = [sumoBinary, "-c",  dir_path + state + "osm.sumocfg", "--time-to-teleport=10000", "--start", "--quit-on-end", "--verbose=False","--duration-log.disable=True","--duration-log.statistics=False", "--no-step-log=True","--threads=4"]
         if self.debug_mode: print("Starting SUMO")
         traci.start(sumoCmd)
@@ -273,20 +276,20 @@ class TrafficProblemManager:
             subprocess.call(["netconvert", "--sumo-net-file=" + dir_path + network_file, "--plain-output-prefix=" + dir_path + state + "flatfiles\\network"], shell=True)
             print("Outputted to " + state + "flatfiles\\")
 
-        #
-        # # Read the nodes file and convert to csv
-        # NodesFile = []
-        # with open(dir_path + state + "flatfiles\\network" + ".nod.xml", "r") as f:
-        #     for line in f.readlines():
-        #         if "<node id=" in line:
-        #             temp = line.split("\"")
-        #             NodesFile.append([temp[1],temp[3],temp[5]])
-        #
-        # pd.set_option('display.max_columns', None)
-        # column_names = ["Node ID", "x", "y"]
-        # Nodes = pd.DataFrame(NodesFile, columns=column_names)
-        #
-        # Nodes.to_csv(dir_path + state + "flatfiles\\nodes.csv", index=False)
+
+        # Read the nodes file and convert to csv
+        NodesFile = []
+        with open(dir_path + state + "flatfiles\\network" + ".nod.xml", "r") as f:
+            for line in f.readlines():
+                if "<node id=" in line:
+                    temp = line.split("\"")
+                    NodesFile.append([temp[1],temp[3],temp[5]])
+
+        pd.set_option('display.max_columns', None)
+        column_names = ["Node ID", "x", "y"]
+        Nodes = pd.DataFrame(NodesFile, columns=column_names)
+
+        Nodes.to_csv(dir_path + state + "flatfiles\\nodes.csv", index=False)
 
         print("Making edges_file")
         # Convert edge file to CSV
@@ -341,10 +344,6 @@ class TrafficProblemManager:
 
                             if (node1_intlanes == 1 and node2_intlanes != 1) or (node1_intlanes != 1 and node2_intlanes == 1) or (node1_intlanes != 1 and node2_intlanes != 1):
                                 edges_file = pd.concat([edges_file, pd.DataFrame([new_row], columns=column_names)])
-
-
-
-
 
         pd.set_option('display.max_columns', None)
 
